@@ -10,17 +10,11 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class AzureClientConfig {
 
-    @Value("${azure.ai.endpoint}")
-    private String endpoint;
-
-    @Value("${azure.ai.key}")
-    private String key;
-
     @Bean
     public ChatCompletionsClient chatCompletionsClient() {
         return new ChatCompletionsClientBuilder()
-                .endpoint(endpoint)
-                .credential(new AzureKeyCredential(key))
+                .credential(new AzureKeyCredential("TU_API_KEY"))  // Reemplaza con tu clave
+                .endpoint("https://tu-recurso.openai.azure.com")  // Reemplaza con tu endpoint
                 .buildClient();
     }
 }

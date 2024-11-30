@@ -1,5 +1,7 @@
 package dbp.proyecto.gpt.chat.domain;
 
+import com.azure.ai.openai.OpenAIClient;
+import com.azure.ai.openai.models.ChatMessage;
 import dbp.proyecto.gpt.Auth.utils.AuthUtils;
 import dbp.proyecto.gpt.Exceptions.UserNotFoundException;
 import dbp.proyecto.gpt.chat.dto.ChatResponseDto;
@@ -24,80 +26,74 @@ import java.util.stream.Collectors;
 public class ChatService {
 
     private final ChatRepository chatRepository;
-
     private final UserRepository userRepository;
-
+    private final MessageRepository messageRepository;
+    private final AuthUtils authUtils;
     private final ModelMapper modelMapper;
 
-    private final AuthUtils authUtils;
-
-    private final MessageRepository messageRepository;
+    private final OpenAIClient openAIClient;
 
     private ChatResponseDto getChatResponseDto(Chat chat) {
-        // Primero, mapeamos los campos básicos usando ModelMapper
         ChatResponseDto chatResponseDto = modelMapper.map(chat, ChatResponseDto.class);
-
-        // Establecemos el userId del propietario del chat
         chatResponseDto.setUserId(chat.getUser().getId());
-
-        // Si existen mensajes en el chat, los mapeamos a MessageResponseDto
         List<MessageResponseDto> messageDtos = chat.getMessages().stream()
-                .map(message -> {
-                    // Mapeamos cada mensaje a su DTO
-                    MessageResponseDto messageDto = modelMapper.map(message, MessageResponseDto.class);
-                    return messageDto;
-                })
+                .map(message -> modelMapper.map(message, MessageResponseDto.class))
                 .collect(Collectors.toList());
-
         chatResponseDto.setMessages(messageDtos);
-
         return chatResponseDto;
     }
 
     public Page<ChatResponseDto> getPostByCurrentUser(Pageable pageable) {
         String email = authUtils.getCurrentUserEmail();
         User user = userRepository.findByEmail(email).orElseThrow(() -> new UserNotFoundException("User not found"));
-
         Page<Chat> chats = chatRepository.findByUserIdOrderByDateCreationDesc(user.getId(), pageable);
         return chats.map(this::getChatResponseDto);
     }
 
     public ChatResponseDto createChatForCurrentUser(String chatName) {
-        String email =authUtils.getCurrentUserEmail();  // Usamos el email del usuario autenticado
+        String email = authUtils.getCurrentUserEmail();
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new UserNotFoundException("User not found"));
 
         Chat chat = new Chat();
         chat.setUser(user);
         chat.setChatName(chatName);
-        chat.setDateCreation(new java.util.Date());  // Asignar la fecha de creación
+        chat.setDateCreation(new java.util.Date());
 
-        // Guardar el chat
         Chat savedChat = chatRepository.save(chat);
 
         return getChatResponseDto(savedChat);
     }
 
-    public ChatResponseDto getChatWithMessages(Long chatId, Pageable pageable) {
-        // Obtener el chat por ID
+    public ChatResponseDto processMessage(Long chatId, String userMessage) {
         Chat chat = chatRepository.findById(chatId)
                 .orElseThrow(() -> new UserNotFoundException("Chat not found"));
 
-        // Obtener los mensajes paginados para este chat
-        Page<Message> messages = messageRepository.findByChatId(chatId, pageable);
+        // Guardar el mensaje del usuario en la base de datos
+        Message userMessageEntity = new Message();
+        userMessageEntity.setChat(chat);
+        userMessageEntity.setContent(userMessage);
+        userMessageEntity.setCreatedAt(new java.util.LocalDateTime());
+        messageRepository.save(userMessageEntity);
 
-        // Mapear el chat a un DTO
-        ChatResponseDto chatResponseDto = modelMapper.map(chat, ChatResponseDto.class);
+        // Generar respuesta con Azure OpenAI
+        ChatCompletionOptions options = new ChatCompletionOptions()
+                .setModel("gpt-4")
+                .setMessages(List.of(
+                        new ChatMessage("system", "You are an assistant."),
+                        new ChatMessage("user", userMessage)
+                ));
+        String aiResponse = openAIClient.getChatCompletions(options).getChoices().get(0).getMessage().getContent();
 
-        // Mapear los mensajes a MessageResponseDto
-        List<MessageResponseDto> messageDtos = messages.stream()
-                .map(message -> modelMapper.map(message, MessageResponseDto.class))
-                .collect(Collectors.toList());
+        // Guardar la respuesta de Azure en la base de datos
+        Message aiMessageEntity = new Message();
+        aiMessageEntity.setChat(chat);
+        aiMessageEntity.setContent(aiResponse);
+        aiMessageEntity.setCreatedAt();
+        messageRepository.save(aiMessageEntity);
 
-        // Establecer los mensajes paginados en el DTO del chat
-        chatResponseDto.setMessages(messageDtos);
-
-        return chatResponseDto;
+        // Retornar el chat actualizado
+        return getChatResponseDto(chat);
     }
 
 }

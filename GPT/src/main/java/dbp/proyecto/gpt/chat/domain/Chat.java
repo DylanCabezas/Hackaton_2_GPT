@@ -21,7 +21,7 @@ public class Chat {
     private String chatName;
 
     @Column(nullable = false, updatable = false)
-    private Date dateCreation;
+    private LocalDateTime dateCreation;
 
     @ManyToOne
     @JoinColumn(name = "user_id", nullable = false)
