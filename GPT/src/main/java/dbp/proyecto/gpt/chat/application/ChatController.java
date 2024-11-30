@@ -20,9 +20,9 @@ public class ChatController {
 
     private final ChatService chatService;
 
-    @GetMapping
+    @GetMapping("/chat")
     public ResponseEntity<Page<ChatResponseDto>> getChatsByCurrentUser(Pageable pageable) {
-        Page<ChatResponseDto> chats = chatService.getPostByCurrentUser(pageable);
+        Page<ChatResponseDto> chats = chatService.getChatsByCurrentUser(pageable);
         return ResponseEntity.ok(chats);
     }
 
@@ -32,7 +32,7 @@ public class ChatController {
         return ResponseEntity.status(201).body(chatResponseDto);
     }
 
-    @GetMapping("/{chatId}")
+    @GetMapping("/chat/{chatId}")
     public ResponseEntity<ChatResponseDto> getChatById(@PathVariable Long chatId, Pageable pageable) {
         ChatResponseDto chatResponseDto = chatService.getChatWithMessages(chatId, pageable);
         return ResponseEntity.ok(chatResponseDto);

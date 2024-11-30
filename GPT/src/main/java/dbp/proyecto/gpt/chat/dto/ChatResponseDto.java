@@ -16,4 +16,6 @@ public class ChatResponseDto {
     private Date dateCreation;
     private Long userId;  // ID del usuario que creó el chat
     private List<MessageResponseDto> messages;
+    private int totalPages;
+    private long totalMessages;
 }

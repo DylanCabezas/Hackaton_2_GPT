@@ -11,4 +11,7 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
 
     Page<Message> findByChatId(Long chatId, Pageable pageable);
 
+    Page<Message> findByChatIdOrderByCreatedAtAsc(Long chatId, Pageable pageable);
+
+
 }

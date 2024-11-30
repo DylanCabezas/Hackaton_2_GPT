@@ -1,7 +1,5 @@
 package dbp.proyecto.gpt.chat.domain;
 
-import com.azure.ai.openai.OpenAIClient;
-import com.azure.ai.openai.models.ChatMessage;
 import dbp.proyecto.gpt.Auth.utils.AuthUtils;
 import dbp.proyecto.gpt.Exceptions.UserNotFoundException;
 import dbp.proyecto.gpt.chat.dto.ChatResponseDto;
@@ -13,11 +11,11 @@ import dbp.proyecto.gpt.user.domain.User;
 import dbp.proyecto.gpt.user.infrastructure.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -31,8 +29,6 @@ public class ChatService {
     private final AuthUtils authUtils;
     private final ModelMapper modelMapper;
 
-    private final OpenAIClient openAIClient;
-
     private ChatResponseDto getChatResponseDto(Chat chat) {
         ChatResponseDto chatResponseDto = modelMapper.map(chat, ChatResponseDto.class);
         chatResponseDto.setUserId(chat.getUser().getId());
@@ -43,9 +39,11 @@ public class ChatService {
         return chatResponseDto;
     }
 
-    public Page<ChatResponseDto> getPostByCurrentUser(Pageable pageable) {
+    public Page<ChatResponseDto> getChatsByCurrentUser(Pageable pageable) {
         String email = authUtils.getCurrentUserEmail();
-        User user = userRepository.findByEmail(email).orElseThrow(() -> new UserNotFoundException("User not found"));
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new UserNotFoundException("User not found"));
+
         Page<Chat> chats = chatRepository.findByUserIdOrderByDateCreationDesc(user.getId(), pageable);
         return chats.map(this::getChatResponseDto);
     }
@@ -65,35 +63,28 @@ public class ChatService {
         return getChatResponseDto(savedChat);
     }
 
-    public ChatResponseDto processMessage(Long chatId, String userMessage) {
+    public ChatResponseDto getChatWithMessages(Long chatId, Pageable pageable) {
+        // Find the chat
         Chat chat = chatRepository.findById(chatId)
                 .orElseThrow(() -> new UserNotFoundException("Chat not found"));
 
-        // Guardar el mensaje del usuario en la base de datos
-        Message userMessageEntity = new Message();
-        userMessageEntity.setChat(chat);
-        userMessageEntity.setContent(userMessage);
-        userMessageEntity.setCreatedAt(new java.util.LocalDateTime());
-        messageRepository.save(userMessageEntity);
+        // Create the response DTO
+        ChatResponseDto chatResponseDto = modelMapper.map(chat, ChatResponseDto.class);
 
-        // Generar respuesta con Azure OpenAI
-        ChatCompletionOptions options = new ChatCompletionOptions()
-                .setModel("gpt-4")
-                .setMessages(List.of(
-                        new ChatMessage("system", "You are an assistant."),
-                        new ChatMessage("user", userMessage)
-                ));
-        String aiResponse = openAIClient.getChatCompletions(options).getChoices().get(0).getMessage().getContent();
+        // Fetch paginated messages for this chat
+        Page<Message> messages = messageRepository.findByChatIdOrderByCreatedAtAsc(chatId, pageable);
 
-        // Guardar la respuesta de Azure en la base de datos
-        Message aiMessageEntity = new Message();
-        aiMessageEntity.setChat(chat);
-        aiMessageEntity.setContent(aiResponse);
-        aiMessageEntity.setCreatedAt();
-        messageRepository.save(aiMessageEntity);
+        // Convert messages to DTOs
+        List<MessageResponseDto> messageResponseDtos = messages.stream()
+                .map(message -> modelMapper.map(message, MessageResponseDto.class))
+                .collect(Collectors.toList());
 
-        // Retornar el chat actualizado
-        return getChatResponseDto(chat);
+        // Set messages in the chat response
+        chatResponseDto.setMessages(messageResponseDtos);
+        chatResponseDto.setTotalPages(messages.getTotalPages());
+        chatResponseDto.setTotalMessages(messages.getTotalElements());
+
+        return chatResponseDto;
     }
 
 }
