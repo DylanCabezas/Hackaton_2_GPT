@@ -1,45 +1,63 @@
 import React, { useState } from "react";
+import openaiClient from "./openaiClient";
 
-const ChatPage: React.FC = () => {
-  const [messages, setMessages] = useState<string[]>([]);
-  const [input, setInput] = useState<string>("");
+interface Message {
+  role: "user" | "assistant";
+  content: string;
+}
 
-  const handleSendMessage = () => {
-    if (input.trim()) {
-      setMessages([...messages, input]);
-      setInput("");
-      // Aquí es donde llamarías a la API de IA para obtener una respuesta
+const Chat: React.FC = () => {
+  const [messages, setMessages] = useState<Message[]>([
+    { role: "assistant", content: "¡Hola! Soy tu asistente IA. ¿En qué puedo ayudarte hoy?" },
+  ]);
+  const [input, setInput] = useState("");
+
+  const sendMessage = async () => {
+    if (!input.trim()) return;
+
+    const newMessages = [...messages, { role: "user", content: input }];
+    setMessages(newMessages);
+    setInput("");
+
+    try {
+      const response = await openaiClient.chat.completions.create({
+        messages: newMessages,
+        model: "gpt-4o-mini",
+      });
+
+      const aiMessage = response.choices[0].message.content;
+      setMessages([...newMessages, { role: "assistant", content: aiMessage }]);
+    } catch (error) {
+      console.error("Error al interactuar con la API:", error);
+      setMessages([
+        ...newMessages,
+        { role: "assistant", content: "Lo siento, ocurrió un error al procesar tu solicitud." },
+      ]);
     }
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900">
-      <div className="max-w-md w-full bg-white p-6 rounded-lg shadow-lg space-y-4">
-        <h2 className="text-2xl font-bold text-center text-gray-800">Chat IA</h2>
-        <div className="space-y-2">
-          {messages.map((message, index) => (
-            <div key={index} className="p-2 bg-gray-200 rounded-lg">
-              {message}
-            </div>
-          ))}
-        </div>
-        <div className="flex space-x-2">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            className="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <button
-            onClick={handleSendMessage}
-            className="bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-500 focus:outline-none"
-          >
-            Enviar
-          </button>
-        </div>
+    <div>
+      <div style={{ maxHeight: "400px", overflowY: "auto" }}>
+        {messages.map((msg, index) => (
+          <div key={index} style={{ margin: "10px 0", textAlign: msg.role === "user" ? "right" : "left" }}>
+            <strong>{msg.role === "user" ? "Tú" : "IA"}:</strong> {msg.content}
+          </div>
+        ))}
       </div>
+      <input
+        type="text"
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        placeholder="Escribe tu mensaje..."
+        onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+        style={{ width: "calc(100% - 20px)", margin: "10px", padding: "10px" }}
+      />
+      <button onClick={sendMessage} style={{ padding: "10px 20px" }}>
+        Enviar
+      </button>
     </div>
   );
 };
 
-export default ChatPage;
+export default Chat;
